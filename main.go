@@ -14,11 +14,8 @@ import (
 
 // TO IMPLEMENT:
 // Delete all text files
-// Not sure if .filename.txt actually hides the text file? I don't think it does
 // Make it run silently in the bg
-// Make it so it auto finds a port to ues instead of defaulting to 8080 as my pc was using 8080 alr lol!
 // Find a way to implement boot on startup
-// Upload to github
 
 
 func main() {
