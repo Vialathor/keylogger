@@ -20,7 +20,6 @@ def main():
         else:
             break
 
-
 def update_cmd(host_name, cmd):
     dynamodb = boto3.client('dynamodb',
     region_name='ap-southeast-2')
